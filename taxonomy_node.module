@@ -1,0 +1,227 @@
+<?php
+// $Id$
+
+/**
+ * Query the database and obtain the nid associated to a tid.
+ *
+ * @param integer $tid
+ *   term id
+ * @return integer
+ *   node id
+ */
+function _taxonomy_node_get_nid_from_tid($tid) {
+  $nid = db_result(db_query("SELECT nid FROM {taxonomy_node} tn WHERE tn.tid = %d", $tid));
+  return $nid;
+}
+
+/**
+ * Query the database and obtain the tid associated to a nid.
+ *
+ * @param integer $nid
+ *   node id
+ * @return integer
+ *   term id
+ */
+function _taxonomy_node_get_tid_from_nid($nid) {
+  $tid = db_result(db_query("SELECT tid FROM {taxonomy_node} tn WHERE tn.nid = %d", $nid));
+  return $tid;
+}
+
+
+function _taxonomy_node_create_node($tid, $vid, $term_name, $parents) {
+  $taxonomy_node_settings = variable_get("taxonomy_node_{$vid}", array());
+  $nid = _taxonomy_node_get_nid_from_tid($tid);
+  if ($nid) {
+    $node = node_load($nid);
+  }
+  else {
+    $node = new stdClass();
+    $node->type = $taxonomy_node_settings['content_type'];
+    node_object_prepare($node);
+    $node_options = variable_get('node_options_'. $node->type, array('status', 'promote'));
+    foreach (array('status', 'promote', 'sticky') as $key) {
+      $node->$key = in_array($key, $node_options);
+    }
+    global $user;
+    $node->uid = $user->uid;
+    // Always use the default revision setting.
+    $node->revision = in_array('revision', $node_options);
+  }
+  $node->title = $term_name;
+  $node->taxonomy = array();
+  if (is_numeric($parents)) {
+    $parents = array($parents);
+  }
+  foreach ($parents as $pid) {
+    $node->taxonomy[] = $pid;
+  }
+  node_save($node);
+
+  if (!$nid) {
+    db_query("INSERT INTO {taxonomy_node} (tid, vid, nid) VALUES (%d, %d, %d)", $tid, $vid, $node->nid);
+  }
+
+  return $node;
+}
+
+/**
+ * Drupal hooks
+ */
+/**
+ * Implementation of hook_menu
+ *
+ * @param unknown_type $may_cache
+ */
+function taxonomy_node_menu($may_cache) {
+  $items = array();
+
+  if ($may_cache) {
+  }
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_form_alter
+ *
+ * @param unknown_type $form_id
+ * @param unknown_type $form
+ */
+function taxonomy_node_form_alter($form_id, &$form) {
+  if ($form_id == 'taxonomy_form_vocabulary') {
+    $form['taxonomy_node'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Taxonomy Node'),
+      '#weight' => 0,
+    );
+    $options = array();
+    $options[''] = t('None');
+    $types = content_types();
+    foreach ($types as $type) {
+      $options[$type['type']] = $type['name'];
+    }
+
+    $vid = $form['vid']['#value'];
+    if ($vid) {
+      $taxonomy_node_settings = variable_get("taxonomy_node_{$vid}", array());
+    }
+    $form['taxonomy_node']['taxonomy_node_content_type'] = array(
+      '#type' => 'select',
+      '#title' => t('Content type'),
+      '#options' => $options,
+      '#default_value' => $taxonomy_node_settings['content_type'],
+      '#description' => t('Choose the content type that will be created when adding new terms.  <b>Important note:</b> If you change your content type selection once nodes have been created, you will have to manually remove the already created nodes for each of the terms of this vocabulary as well as unset the old content type from the <i>Types</i> associated to this vocabulary.')
+    );
+    $form['taxonomy_node']['taxonomy_node_batch'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Batch create'),
+      '#description' => t('Select this checkbox if you want to create content types of the current terms inside this vocabulary.'),
+    );
+  }
+
+  if ($form_id == 'taxonomy_form_term') {
+    $tid = $form['tid']['#value'];
+    if ($tid) {
+      $nid = db_result(db_query("SELECT nid FROM {taxonomy_node} tn WHERE tn.tid = %d", $tid));
+
+      $form['taxonomy_node'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Taxonomy Node'),
+        '#weight' => -20,
+      );
+      $form['taxonomy_node']['taxonomy_node_node'] = array(
+        '#type' => 'markup',
+        '#value' => t('You can edit the associated node !node as well', array('!node' => l($form['name']['#default_value'], 'node/'.$nid.'/edit', array(), drupal_get_destination()))),
+      );
+    }
+  }
+
+  if (substr($form_id, -10) == '_node_form') {
+    $nid = $form['nid']['#value'];
+    // find vid in module table
+    if ($nid) {
+      $row = db_fetch_object(db_query("SELECT * FROM {taxonomy_node} tn WHERE tn.nid = %d", $nid));
+      $vid = $row->vid;
+      if ($vid) {
+        $vocab = taxonomy_get_vocabulary($vid);
+        $form['taxonomy'][$vid . '_disabled'] = $form['taxonomy'][$vid];
+        $form['taxonomy'][$vid . '_disabled']['#multiple'] = ($vocab->hierarchy == 2);
+        $form['taxonomy'][$vid . '_disabled']['#multiple'] = ($vocab->hierarchy == 2);
+        $form['taxonomy'][$vid . '_disabled']['#disabled'] = TRUE;
+        $form['taxonomy'][$vid] = array(
+          '#type' => 'value',
+          '#value' => $form['taxonomy'][$vid]['#default_value'],
+        );
+        $form['title']['#disabled'] = TRUE;
+        unset($form['delete']);
+
+        $term = taxonomy_get_term($row->tid);
+        if (!$form['#post']) {
+          drupal_set_message(t('Taxonomy Node: Disabled form elements should be only changed on the associated term !term. To delete this node, delete the term first.', array('!term' => l($term->name, 'admin/content/taxonomy/edit/term/'.$row->tid))));
+        }
+      }
+    }
+  }
+}
+
+function taxonomy_node_taxonomy($op, $type, $array = NULL) {
+  if ($type == 'vocabulary') {
+    $vid = $array['vid'];
+    $content_type = $array['taxonomy_node_content_type'];
+    if ($op == 'insert' || $op == 'update') {
+      // store settings
+      $taxonomy_node_settings_old = variable_get("taxonomy_node_{$vid}", array());
+      if ($taxonomy_node_settings_old['content_type'] && $taxonomy_node_settings_old['content_type'] != $content_type) {
+        db_query("DELETE FROM {taxonomy_node} WHERE vid = %d", $vid);
+        drupal_set_message(t('You have changed your content type selection. If nodes have been created with the old content type, you will have to manually remove the already created nodes for each of the terms of this vocabulary as well as unset the old content type from the <i>Types</i> associated to this vocabulary.'));
+      }
+      $taxonomy_node_settings['content_type'] = $content_type;
+      variable_set("taxonomy_node_{$vid}", $taxonomy_node_settings);
+      // force vocabulary to have the assigned content as Type
+      if ($content_type) {
+        db_query("DELETE FROM {vocabulary_node_types} WHERE vid = %d AND type = '%s'", $vid, $content_type);
+        db_query("INSERT INTO {vocabulary_node_types} (vid, type) VALUES (%d, '%s')", $vid, $content_type);
+        drupal_set_message(t('Taxonomy node information set.'));
+
+        if ($array['taxonomy_node_batch']) {
+          $result = db_query("SELECT t.* FROM {term_data} t LEFT JOIN {taxonomy_node} tn ON t.tid = tn.tid WHERE t.vid = %d AND isnull(tn.tid)", $vid);
+
+          $cnt = 0;
+          while ($row = db_fetch_object($result)) {
+            $term = taxonomy_get_term($row->tid);
+            $parents = taxonomy_get_parents($row->tid);
+            _taxonomy_node_create_node($row->tid, $vid, $term->name, array_keys($parents));
+            $cnt++;
+          }
+
+          drupal_set_message(t('Taxonomy Node: Batch operation, %cnt nodes created.', array('%cnt' => $cnt)));
+        }
+      }
+    }
+
+    if ($op == 'delete') {
+      variable_del("taxonomy_node_{$vid}");
+    }
+  }
+
+  if ($type == 'term') {
+    $vid = $array['vid'];
+    $tid = $array['tid'];
+    $taxonomy_node_settings = variable_get("taxonomy_node_{$vid}", array());
+    if ($taxonomy_node_settings['content_type']) {
+      if ($op == 'insert' || $op == 'update') {
+        $node = _taxonomy_node_create_node($tid, $vid, $array['name'], $array['parent']);
+
+        drupal_set_message(t('Taxonomy Node: Node !node created/updated.', array('!node' => l($node->title, 'node/'.$node->nid))));
+      }
+    }
+
+    if ($op == 'delete') {
+      $nid = db_result(db_query("SELECT nid FROM {taxonomy_node} tn WHERE tn.tid = %d", $tid));
+      if ($nid) {
+        node_delete($nid);
+        db_query("DELETE FROM {taxonomy_node} WHERE nid = %d", $nid);
+      }
+    }
+  }
+}

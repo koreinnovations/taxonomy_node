@@ -1,0 +1,21 @@
+<?php
+// $Id$
+
+/**
+ * Implementation of hook_install().
+ */
+function taxonomy_node_install() {
+  switch ($GLOBALS['db_type']) {
+    case 'mysql':
+    case 'mysqli':
+      db_query("CREATE TABLE {taxonomy_node} (
+        tid INTEGER NOT NULL,
+        vid INTEGER NOT NULL,
+        nid INTEGER NOT NULL,
+        PRIMARY KEY (tid)
+        ) /*!40100 DEFAULT CHARACTER SET utf8 */;");
+      break;
+  }
+
+  drupal_set_message(t('The Taxonomy Node module was installed. This module extends the configuration screen of vocabularies so you can associate content types with them.'));
+}

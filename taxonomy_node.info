@@ -1,0 +1,4 @@
+; $Id$
+name = Taxonomy Node
+description = Associtates automatically a taxonomy term with a node.
+dependencies = taxonomy
