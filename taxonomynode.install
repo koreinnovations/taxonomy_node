@@ -1,0 +1,49 @@
+<?php
+// $Id$
+
+/**
+ * Implementation of hook_install().
+ */
+function taxonomynode_install() {
+  switch ($GLOBALS['db_type']) {
+    case 'mysql':
+    case 'mysqli':
+      db_query("CREATE TABLE {taxonomynode} (
+        tid INTEGER NOT NULL,
+        vid INTEGER NOT NULL,
+        nid INTEGER NOT NULL,
+        PRIMARY KEY (tid)
+        ) /*!40100 DEFAULT CHARACTER SET utf8 */;");
+
+      /* Check if we are upgrading from version 1.3 that was having a conflicting name */
+      /* Code will be removed in future versions */
+      if (db_table_exists('taxonomy_node')) {
+        // move data
+        $result = db_query("SELECT * FROM {taxonomy_node}");
+        while ($row = db_fetch_object($result)) {
+          if ($row->tid && $row->vid && $row->nid) {
+            db_query("INSERT INTO {taxonomynode} (tid, vid, nid) VALUES (%d, %d, %d)", $row->tid, $row->vid, $row->nid);
+          }
+        }
+
+        // move settings
+        foreach (taxonomy_get_vocabularies() as $vocabulary) {
+          $vid = $vocabulary->vid;
+          $vocabsettings = variable_get("taxonomy_node_{$vid}", array());
+          // store in new module's name variable
+          if (is_array($vocabsettings) && !empty($vocabsettings)) {
+            variable_set("taxonomynode_{$vid}", $vocabsettings);
+          }
+          // delete old just in case
+          variable_del("taxonomy_node_{$vid}");
+        }
+
+        // remove module and table
+        db_query("DELETE FROM {system} WHERE name = 'taxonomy_node'");
+        db_query("DROP TABLE {taxonomy_node}");
+      }
+      break;
+  }
+
+  drupal_set_message(t('The Taxonomy Node module was installed. This module extends the configuration screen of vocabularies so you can associate content types with them.'));
+}
