@@ -1,6 +1,15 @@
 <?php
 // $Id$
 
+/* TODO You may want to take advantage of new form-specific alter hooks.
+   The hook_form_alter() is complemented by hook_form_$form-id_alter().
+   Optionally, modules can implement form-specific alteration functions rather
+   than a single hook_form_alter() with many conditional switch statements.
+   This is optional, and is most useful for tidying the code of modules that
+   alter many forms to customize a site's operations.
+   The new function names are built using the following format:
+   [your-module-name]_form_[$form_id]_alter. */
+
 define ('TAXONOMYNODE_SETTINGS_NODE_OPERATIONS', variable_get('taxonomynode_node_operations', FALSE));
 
 /**
@@ -76,7 +85,7 @@ function _taxonomynode_create_term($node) {
       $term['vid'] = $vid;
       $term['name'] = $node->title;
       // parents
-      $parents = array_keys(taxonomy_node_get_terms_by_vocabulary($node->nid, $vid));
+      $parents = array_keys(taxonomy_node_get_terms_by_vocabulary($node, $vid));
       $term['parent'] = $parents;
       taxonomy_save_term($term);
       $terms[] = $term;
@@ -98,6 +107,7 @@ function _taxonomynode_create_node($tid, $vid, $term_name, $parents) {
     else {
       $node = new stdClass();
       $node->type = $taxonomynode_settings['content_type'];
+      require_once(drupal_get_path('module', 'node').'/node.pages.inc');
       node_object_prepare($node);
       $node_options = variable_get('node_options_'. $node->type, array('status', 'promote'));
       foreach (array('status', 'promote', 'sticky') as $key) {
@@ -134,28 +144,22 @@ function _taxonomynode_create_node($tid, $vid, $term_name, $parents) {
  *
  * @param unknown_type $may_cache
  */
-function taxonomynode_menu($may_cache) {
+function taxonomynode_menu() {
   $items = array();
 
-  if ($may_cache) {
-    $items[]= array (
-      'path' => 'admin/settings/taxonomynode',
-      'title' => 'Taxonomy Node',
-      'callback' => 'drupal_get_form',
-      'callback arguments' => array('taxonomynode_settings'),
-      'access' => user_access('administer taxonomy'),
-    );
-  }
-  else {
-    if (arg(0) == 'admin' && arg(1) == 'content' && arg(2) == 'taxonomy' && arg(3) == 'edit' && arg(4) == 'term') {
-      $items[]= array(
-        'path' => 'admin/content/taxonomy/edit/term/'. arg(5) .'/taxonomynode/create',
-        'callback' => 'taxonomynode_create',
-        'callback arguments' => array(arg(5)),
-        'type' => MENU_CALLBACK,
-      );
-    }
-  }
+  $items['admin/settings/taxonomynode'] = array(
+    'title' => 'Taxonomy Node',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('taxonomynode_settings'),
+    'access arguments' => array('administer taxonomy'),
+  );
+
+  $items['admin/content/taxonomy/edit/term/%/taxonomynode'] = array(
+    'page callback' => 'taxonomynode_create',
+    'page arguments' => array(5),
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('administer taxonomy'),
+  );
 
   return $items;
 }
@@ -166,7 +170,7 @@ function taxonomynode_menu($may_cache) {
  * @param unknown_type $form_id
  * @param unknown_type $form
  */
-function taxonomynode_form_alter($form_id, &$form) {
+function taxonomynode_form_alter(&$form, &$form_state, $form_id) {
   if ($form_id == 'taxonomy_form_vocabulary') {
     $form['taxonomynode'] = array(
       '#type' => 'fieldset',
@@ -175,9 +179,9 @@ function taxonomynode_form_alter($form_id, &$form) {
     );
     $options = array();
     $options[''] = t('None');
-    $types = content_types();
+    $types = node_get_types();
     foreach ($types as $type) {
-      $options[$type['type']] = $type['name'];
+      $options[$type->type] = $type->name;
     }
 
     $vid = $form['vid']['#value'];
@@ -212,15 +216,16 @@ function taxonomynode_form_alter($form_id, &$form) {
         '#weight' => -20,
       );
       if ($nid) {
+        $node = node_load($nid);
         $form['taxonomynode']['taxonomynode_node'] = array(
           '#type' => 'markup',
-          '#value' => t('You can edit the associated node !node as well.', array('!node' => l($form['name']['#default_value'], 'node/'. $nid .'/edit'))),
+          '#value' => t('You can edit the associated node !node as well.', array('!node' => l($node->title, 'node/'. $nid .'/edit'))),
         );
       }
       else {
         $form['taxonomynode']['taxonomynode_node'] = array(
           '#type' => 'markup',
-          '#value' => t('There is no associated node available for this term. !link.', array('!link' => l(t('Create it'), 'admin/content/taxonomy/edit/term/'. $tid .'/taxonomynode/create'))),
+          '#value' => t('There is no associated node available for this term. !link.', array('!link' => l(t('Create it'), 'admin/content/taxonomy/edit/term/'. $tid .'/taxonomynode'))),
         );
       }
     }
@@ -233,7 +238,7 @@ function taxonomynode_form_alter($form_id, &$form) {
       $row = db_fetch_object(db_query("SELECT * FROM {taxonomynode} tn WHERE tn.nid = %d", $nid));
       $vid = $row->vid;
       if ($vid) {
-        $vocab = taxonomy_get_vocabulary($vid);
+        $vocab = taxonomy_vocabulary_load($vid);
         $form['taxonomy'][$vid .'_disabled'] = $form['taxonomy'][$vid];
         $form['taxonomy'][$vid .'_disabled']['#multiple'] = ($vocab->hierarchy == 2);
         $form['taxonomy'][$vid .'_disabled']['#disabled'] = TRUE;
@@ -243,8 +248,16 @@ function taxonomynode_form_alter($form_id, &$form) {
           '#type' => 'value',
           '#value' => $form['taxonomy'][$vid]['#default_value'],
         );
-        $form['title']['#disabled'] = TRUE;
-        unset($form['delete']);
+        $form['title_disabled'] = $form['title'];
+        $form['title_disabled']['#disabled'] = TRUE;
+        $form['title_disabled']['#required'] = FALSE;
+        $form['title'] = array(
+          '#type' => 'hidden',
+          '#value' => $form['title']['#default_value'],
+        );
+        if (!TAXONOMYNODE_SETTINGS_NODE_OPERATIONS) {
+          unset($form['buttons']['delete']);
+        }
 
         $term = taxonomy_get_term($row->tid);
         if (!$form['#post']) {

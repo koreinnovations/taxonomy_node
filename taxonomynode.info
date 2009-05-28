@@ -1,4 +1,5 @@
 ; $Id$
 name = Taxonomy Node
 description = Associtates automatically a taxonomy term with a node.
-dependencies = taxonomy
+dependencies[] = taxonomy
+core = 6.x
