@@ -97,7 +97,7 @@ function _taxonomynode_create_term($node) {
   return $terms;
 }
 
-function _taxonomynode_create_node($tid, $vid, $term_name, $parents) {
+function _taxonomynode_create_node($tid, $vid, $term_name, $parents, $new_nid = null) {
   $taxonomynode_settings = variable_get("taxonomynode_{$vid}", array());
   if ($taxonomynode_settings['content_type']) {
     $nid = _taxonomynode_get_nid_from_tid($tid);
@@ -105,21 +105,33 @@ function _taxonomynode_create_node($tid, $vid, $term_name, $parents) {
       $node = node_load($nid);
     }
     else {
-      $node = new stdClass();
-      $node->type = $taxonomynode_settings['content_type'];
-      require_once(drupal_get_path('module', 'node').'/node.pages.inc');
-      node_object_prepare($node);
-      $node_options = variable_get('node_options_'. $node->type, array('status', 'promote'));
-      foreach (array('status', 'promote', 'sticky') as $key) {
-        $node->$key = in_array($key, $node_options);
+      if ($new_nid) {
+        $node = node_load($new_nid);
       }
-      global $user;
-      $node->uid = $user->uid;
-      // Always use the default revision setting.
-      $node->revision = in_array('revision', $node_options);
+      else {
+        $node = new stdClass();
+        $node->type = $taxonomynode_settings['content_type'];
+        require_once(drupal_get_path('module', 'node').'/node.pages.inc');
+        node_object_prepare($node);
+        $node_options = variable_get('node_options_'. $node->type, array('status', 'promote'));
+        foreach (array('status', 'promote', 'sticky') as $key) {
+          $node->$key = in_array($key, $node_options);
+        }
+        global $user;
+        $node->uid = $user->uid;
+        // Always use the default revision setting.
+        $node->revision = in_array('revision', $node_options);
+        $node->taxonomy = array();
+      }
     }
     $node->title = $term_name;
-    $node->taxonomy = array();
+    // Remove all taxonomy terms from the associated vocabulary
+    foreach ($node->taxonomy as $tid => $term) {
+      if ($term->vid == $vid) {
+        unset($node->taxonomy[$tid]);
+      }
+    }
+    // Re-add the parents as terms for this node
     if (is_numeric($parents)) {
       $parents = array($parents);
     }
@@ -219,14 +231,31 @@ function taxonomynode_form_alter(&$form, &$form_state, $form_id) {
         $node = node_load($nid);
         $form['taxonomynode']['taxonomynode_node'] = array(
           '#type' => 'markup',
-          '#value' => t('You can edit the associated node !node as well.', array('!node' => l($node->title, 'node/'. $nid .'/edit'))),
+          '#value' => t('<div>You can edit the associated node !node as well.</div>', array('!node' => l($node->title, 'node/'. $nid .'/edit'))),
+        );
+        $form['taxonomynode']['taxonomynode_nid'] = array(
+          '#type' => 'value',
+          '#value' => $nid,
         );
       }
       else {
         $form['taxonomynode']['taxonomynode_node'] = array(
           '#type' => 'markup',
-          '#value' => t('There is no associated node available for this term. !link.', array('!link' => l(t('Create it'), 'admin/content/taxonomy/edit/term/'. $tid .'/taxonomynode'))),
+          '#value' => t('<div>There is no associated node available for this term.</div><div>You can choose an existing one from the select box below and save the term or <a href="!create_uri">create a new one</a>.</div>', array('!create_uri' => url('admin/content/taxonomy/edit/term/'. $tid .'/taxonomynode'))),
         );
+        $options = array();
+        $options[''] = t('Please select');
+        $result = db_query("SELECT n.* FROM {node} n LEFT JOIN {taxonomynode} tn ON n.nid = tn.nid WHERE n.type = '%s' AND isnull(tn.nid)", $taxonomynode_settings['content_type']);
+        while ($row = db_fetch_object($result)) {
+          $options[$row->nid] = "$row->nid - $row->title";
+        }
+        $types = node_get_types();
+        $form['taxonomynode']['taxonomynode_new_nid'] = array(
+          '#type' => 'select',
+          '#options' => $options,
+          '#description' => t('Choose a free %content_type to be associated to this term.', array('%content_type' => $types[$taxonomynode_settings['content_type']]->name)),
+        );
+
       }
     }
   }
@@ -285,7 +314,7 @@ function taxonomynode_taxonomy($op, $type, $array = NULL) {
     return;
   }
 
-  if ($type == 'vocabulary') {
+  if ($type == 'vocabulary' && isset($array['taxonomynode_content_type'])) {
     $vid = $array['vid'];
     $content_type = $array['taxonomynode_content_type'];
     if ($op == 'insert' || $op == 'update') {
@@ -331,9 +360,10 @@ function taxonomynode_taxonomy($op, $type, $array = NULL) {
     $tid = $array['tid'];
     $taxonomynode_settings = variable_get("taxonomynode_{$vid}", array());
     if ($taxonomynode_settings['content_type']) {
-      if ($op == 'insert' || $op == 'update') {
+      if ($op == 'insert' || $op == 'update' && ($array['taxonomynode_nid'] || isset($array['taxonomynode_new_nid']) && is_numeric($array['taxonomynode_new_nid']))) {
+        $new_nid = $array['taxonomynode_new_nid'];
         _taxonomynode_toggle();
-        $node = _taxonomynode_create_node($tid, $vid, $array['name'], $array['parent']);
+        $node = _taxonomynode_create_node($tid, $vid, $array['name'], $array['parent'], $new_nid);
         _taxonomynode_toggle();
 
         drupal_set_message(t('Taxonomy Node: Node !node created/updated.', array('!node' => l($node->title, 'node/'. $node->nid))));
