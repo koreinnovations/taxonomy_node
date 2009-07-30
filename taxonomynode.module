@@ -452,7 +452,9 @@ function taxonomynode_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
 function taxonomynode_create($tid) {
   $term = taxonomy_get_term($tid);
   $parents = taxonomy_get_parents($tid);
+  _taxonomynode_toggle();
   _taxonomynode_create_node($tid, $term->vid, $term->name, array_keys($parents));
+  _taxonomynode_toggle();
   drupal_set_message(t('Taxonomy Node: Node created.'));
   drupal_goto('admin/content/taxonomy/edit/term/'. $tid);
 }
