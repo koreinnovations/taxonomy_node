@@ -233,10 +233,6 @@ function taxonomynode_form_alter(&$form, &$form_state, $form_id) {
           '#type' => 'markup',
           '#value' => t('<div>You can edit the associated node !node as well.</div>', array('!node' => l($node->title, 'node/'. $nid .'/edit'))),
         );
-        $form['taxonomynode']['taxonomynode_nid'] = array(
-          '#type' => 'value',
-          '#value' => $nid,
-        );
       }
       else {
         $form['taxonomynode']['taxonomynode_node'] = array(
@@ -360,7 +356,8 @@ function taxonomynode_taxonomy($op, $type, $array = NULL) {
     $tid = $array['tid'];
     $taxonomynode_settings = variable_get("taxonomynode_{$vid}", array());
     if ($taxonomynode_settings['content_type']) {
-      if ($op == 'insert' || $op == 'update' && ($array['taxonomynode_nid'] || isset($array['taxonomynode_new_nid']) && is_numeric($array['taxonomynode_new_nid']))) {
+      $nid = _taxonomynode_get_nid_from_tid($tid);
+      if ($op == 'insert' || $op == 'update' && ($nid || isset($array['taxonomynode_new_nid']) && is_numeric($array['taxonomynode_new_nid']))) {
         $new_nid = $array['taxonomynode_new_nid'];
         _taxonomynode_toggle();
         $node = _taxonomynode_create_node($tid, $vid, $array['name'], $array['parent'], $new_nid);
