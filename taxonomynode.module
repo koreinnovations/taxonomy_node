@@ -249,7 +249,7 @@ function taxonomynode_form_alter(&$form, &$form_state, $form_id) {
         $form['taxonomynode']['taxonomynode_new_nid'] = array(
           '#type' => 'select',
           '#options' => $options,
-          '#description' => t('Choose a free %content_type to be associated to this term.', array('%content_type' => $types[$taxonomynode_settings['content_type']]->name)),
+          '#description' => t('Choose a free %content_type to be associated to this term. The node\'s title will be replaced with the term name and the the parent term will be added to the node\'s taxonomy.', array('%content_type' => $types[$taxonomynode_settings['content_type']]->name)),
         );
 
       }
@@ -363,7 +363,7 @@ function taxonomynode_taxonomy($op, $type, $array = NULL) {
         $node = _taxonomynode_create_node($tid, $vid, $array['name'], $array['parent'], $new_nid);
         _taxonomynode_toggle();
 
-        drupal_set_message(t('Taxonomy Node: Node !node created/updated.', array('!node' => l($node->title, 'node/'. $node->nid))));
+        drupal_set_message(t('Taxonomy Node: Node !node !action.', array('!node' => l($node->title, 'node/'. $node->nid), '!action' => $op == 'insert' ? 'created' : 'updated')));
       }
     }
 
