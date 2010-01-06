@@ -195,8 +195,9 @@ function taxonomynode_form_alter(&$form, &$form_state, $form_id) {
     foreach ($types as $type) {
       $options[$type->type] = $type->name;
     }
-
-    $vid = $form['vid']['#value'];
+    
+    $taxonomynode_settings = array();
+    $vid = isset($form['vid']['#value']) ? $form['vid']['#value'] : FALSE;
     if ($vid) {
       $taxonomynode_settings = variable_get("taxonomynode_{$vid}", array());
     }
@@ -204,7 +205,7 @@ function taxonomynode_form_alter(&$form, &$form_state, $form_id) {
       '#type' => 'select',
       '#title' => t('Content type'),
       '#options' => $options,
-      '#default_value' => $taxonomynode_settings['content_type'],
+      '#default_value' => isset($taxonomynode_settings['content_type']) ? $taxonomynode_settings['content_type'] : '',
       '#description' => t('Choose the content type that will be created when adding new terms.  <b>Important note:</b> If you change your content type selection once nodes have been created, you will have to manually remove the already created nodes for each of the terms of this vocabulary as well as unset the old content type from the <i>Types</i> associated to this vocabulary.')
     );
     $form['taxonomynode']['taxonomynode_batch'] = array(
