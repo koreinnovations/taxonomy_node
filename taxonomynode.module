@@ -400,6 +400,10 @@ function taxonomynode_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
   }
 
   switch ($op) {
+    case 'load':
+      return array('taxonomynode' => array('tid' => _taxonomynode_get_tid_from_nid($node->nid)));
+      break;
+
     case 'insert':
     case 'update':
       $tid = _taxonomynode_get_tid_from_nid($node->nid);
