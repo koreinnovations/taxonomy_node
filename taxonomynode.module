@@ -1,5 +1,4 @@
 <?php
-// $Id$
 
 /* TODO You may want to take advantage of new form-specific alter hooks.
    The hook_form_alter() is complemented by hook_form_$form-id_alter().

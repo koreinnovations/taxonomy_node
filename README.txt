@@ -46,4 +46,3 @@ if you want node operations to sync to specific terms.
 
 Last updated:
 ------------
-$Id$
