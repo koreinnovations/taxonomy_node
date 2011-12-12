@@ -445,6 +445,15 @@ function taxonomynode_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
 }
 
 /**
+ * Implementation of hook_ctools_plugin_directory().
+ */
+function taxonomynode_ctools_plugin_directory($module, $plugin) {
+  if ($module == 'ctools' && $plugin == 'relationships') {
+    return 'panels/' . $plugin;
+  }
+}
+
+/**
  * Callbacks
  */
 

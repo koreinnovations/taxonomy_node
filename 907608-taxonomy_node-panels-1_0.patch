@@ -1,0 +1,124 @@
+:000000 100644 0000000... 59eff4c... A	sites/all/modules/patched/taxonomy_node/panels/relationships/taxonomynode_node_from_term.inc
+:000000 100644 0000000... 295dbb7... A	sites/all/modules/patched/taxonomy_node/panels/relationships/taxonomynode_term_from_node.inc
+:100644 100644 df45ee6... 0000000... M	sites/all/modules/patched/taxonomy_node/taxonomynode.module
+
+diff --git a/sites/all/modules/patched/taxonomy_node/panels/relationships/taxonomynode_node_from_term.inc b/sites/all/modules/patched/taxonomy_node/panels/relationships/taxonomynode_node_from_term.inc
+new file mode 100644
+index 0000000..59eff4c
+--- /dev/null
++++ b/sites/all/modules/patched/taxonomy_node/panels/relationships/taxonomynode_node_from_term.inc
+@@ -0,0 +1,44 @@
++<?php
++
++/**
++ * @file
++ * Provides a CTools (Panels) relationship that gets a node context from the
++ * term context based on nodes from Taxonomy Node.
++ */
++
++/**
++ * Implementation of specially named hook_ctools_relationships().
++ */
++function taxonomynode_taxonomynode_node_from_term_ctools_relationships() {
++  $args['taxonomynode_node_from_term'] = array(
++    'title' => t("Node from term (Taxonomy Node)"),
++    'keyword' => 'taxonomynode_node',
++    'description' => t('Adds a Taxonomy Node node from term context'),
++    'required context' => new ctools_context_required(t('Term'), 'term'),
++    'context' => 'taxonomynode_taxonomynode_node_from_term_ctools_context',
++    //'settings form' => 'taxonomynode_taxonomynode_node_from_term_ctools_settings_form', // Not needed
++    //'settings form validate' => 'taxonomynode_taxonomynode_node_from_term_ctools_settings_form_validate', // Not needed
++  );
++  
++  return $args;
++}
++
++/**
++ * Return a new context based on an existing context.
++ */
++function taxonomynode_taxonomynode_node_from_term_ctools_context($context, $conf) {
++  // If unset it wants a generic, unfilled context, which is just NULL
++  if (empty($context->data) || !isset($context->data->uid)) {
++    $new_context = ctools_context_create_empty('node', NULL);
++  }
++  else {
++    // Load the node for the requested type
++    $tid = $context->data->tid;
++    $taxonomynode_node = node_load(_taxonomynode_get_nid_from_tid($tid));
++
++    // Send it to ctools.
++    $new_context = ctools_context_create('node', $taxonomynode_node);
++  }
++
++  return $new_context;
++}
+diff --git a/sites/all/modules/patched/taxonomy_node/panels/relationships/taxonomynode_term_from_node.inc b/sites/all/modules/patched/taxonomy_node/panels/relationships/taxonomynode_term_from_node.inc
+new file mode 100644
+index 0000000..295dbb7
+--- /dev/null
++++ b/sites/all/modules/patched/taxonomy_node/panels/relationships/taxonomynode_term_from_node.inc
+@@ -0,0 +1,44 @@
++<?php
++
++/**
++ * @file
++ * Provides a CTools (Panels) relationship that gets a term context from the
++ * node context based on terms used by Taxonomy Node.
++ */
++
++/**
++ * Implementation of specially named hook_ctools_relationships().
++ */
++function taxonomynode_taxonomynode_term_from_node_ctools_relationships() {
++  $args['taxonomynode_term_from_node'] = array(
++    'title' => t("Term from node (Taxonomy Node)"),
++    'keyword' => 'taxonomynode_term',
++    'description' => t('Adds a Taxonomy Node term from node context'),
++    'required context' => new ctools_context_required(t('Node'), 'node'),
++    'context' => 'taxonomynode_taxonomynode_term_from_node_ctools_context',
++    //'settings form' => 'taxonomynode_taxonomynode_term_from_node_ctools_settings_form', // Not needed
++    //'settings form validate' => 'taxonomynode_taxonomynode_term_from_node_ctools_settings_form_validate', // Not needed
++  );
++  
++  return $args;
++}
++
++/**
++ * Return a new context based on an existing context.
++ */
++function taxonomynode_taxonomynode_term_from_node_ctools_context($context, $conf) {
++  // If unset it wants a generic, unfilled context, which is just NULL
++  if (empty($context->data) || !isset($context->data->uid)) {
++    $new_context = ctools_context_create_empty('term', NULL);
++  }
++  else {
++    // Load the node for the requested type
++    $nid = $context->data->nid;
++    $taxonomynode_term = taxonomy_get_term(_taxonomynode_get_tid_from_nid($nid));
++
++    // Send it to ctools.
++    $new_context = ctools_context_create('term', $taxonomynode_term);
++  }
++
++  return $new_context;
++}
+diff --git a/sites/all/modules/patched/taxonomy_node/taxonomynode.module b/sites/all/modules/patched/taxonomy_node/taxonomynode.module
+index df45ee6..fc841aa 100644
+--- a/sites/all/modules/patched/taxonomy_node/taxonomynode.module
++++ b/sites/all/modules/patched/taxonomy_node/taxonomynode.module
+@@ -441,6 +441,15 @@ function taxonomynode_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+ }
+ 
+ /**
++ * Implementation of hook_ctools_plugin_directory().
++ */
++function taxonomynode_ctools_plugin_directory($module, $plugin) {
++  if ($module == 'ctools' && $plugin == 'relationships') {
++    return 'panels/' . $plugin;
++  }
++}
++
++/**
+  * Callbacks
+  */
+ 
